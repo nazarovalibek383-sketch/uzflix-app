@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UzFlix - Onlayn Kino va Seriallar</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f0f0f;
+            --card-bg: #1f1f1f;
+            --primary-color: #e50914;
+            --text-color: #ffffff;
+            --text-sub: #aaaaaa;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            user-select: none;
+        }
+
+        header {
+            position: sticky;
+            top: 0;
+            background-color: rgba(15, 15, 15, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 12px;
+            z-index: 90;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid #333;
+            background-color: #222;
+            color: #fff;
+            font-size: 15px;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        .categories {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding: 12px;
+            scrollbar-width: none;
+        }
+
+        .categories::-webkit-scrollbar { display: none; }
+
+        .chip {
+            padding: 8px 16px;
+            background-color: #222;
+            border-radius: 20px;
+            font-size: 13px;
+            white-space: nowrap;
+            cursor: pointer;
+            border: 1px solid #333;
+        }
+
+        .chip.active {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            font-weight: bold;
+        }
+
+        .movie-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 12px;
+        }
+
+        .movie-card {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+        }
+
+        .poster {
+            width: 100%;
+            aspect-ratio: 2/3;
+            object-fit: cover;
+            background-color: #222;
+        }
+
+        .info { padding: 10px; }
+        .title { font-size: 14px; font-weight: 600; margin: 0 0 4px 0; }
+        .meta { font-size: 12px; color: var(--text-sub); display: flex; justify-content: space-between; }
+
+        /* Modal Player Window */
+        .player-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #000;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .player-header {
+            position: relative;
+            width: 100%;
+        }
+
+        video {
+            width: 100%;
+            max-height: 250px;
+            background-color: #000;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 10px; right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 50%;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 1001;
+        }
+
+        .player-body { padding: 16px; }
+        .player-title { font-size: 20px; font-weight: bold; margin-bottom: 8px; }
+        .player-tags { font-size: 13px; color: var(--primary-color); margin-bottom: 12px; }
+        .player-bio { font-size: 14px; color: #ccc; line-height: 1.5; margin-bottom: 16px; }
+
+        .share-btn {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .episodes-list {
+            margin-top: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .episode-item {
+            padding: 12px;
+            background-color: #222;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <input type="text" id="searchInput" class="search-box" placeholder="Kino nomini yozing..." oninput="filterMovies()">
+    </header>
+
+    <div class="categories">
+        <div class="chip active" onclick="selectCategory('all', this)">Barchasi</div>
+        <div class="chip" onclick="selectCategory('Jangovar', this)">Jangovar</div>
+        <div class="chip" onclick="selectCategory('Fantastika', this)">Fantastika</div>
+        <div class="chip" onclick="selectCategory('Drama', this)">Drama</div>
+        <div class="chip" onclick="selectCategory('Komediya', this)">Komediya</div>
+        <div class="chip" onclick="selectCategory('Tarjima', this)">Tarjima Kinolar</div>
+        <div class="chip" onclick="selectCategory('Premyera', this)">Premyeralar</div>
+        <div class="chip" onclick="selectCategory('Multfilm', this)">Multfilmlar</div>
+        <div class="chip" onclick="selectCategory('Serial', this)">Seriallar</div>
+    </div>
+
+    <div class="movie-grid" id="movieContainer"></div>
+
+    <!-- Video Modal Player -->
+    <div id="playerModal" class="player-modal">
+        <div class="player-header">
+            <button class="close-btn" onclick="closePlayer()">✕</button>
+            <video id="videoPlayer" controls controlsList="nodownload"></video>
+        </div>
+        <div class="player-body">
+            <div id="mTitle" class="player-title"></div>
+            <div id="mTags" class="player-tags"></div>
+            <div id="mBio" class="player-bio"></div>
+
+            <button class="share-btn" onclick="shareBotLink()">
+                🚀 Do'stlarga ulashish
+            </button>
+
+            <div id="episodesContainer" class="episodes-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // Bot manzili (Ulashish tugmasi uchun)
+        const BOT_USERNAME = "UzFlix_App_Bot";
+
+        // Baza (Serverdan yuklanadi yoki static beriladi)
+        const movies = [
+            {
+                id: "kino_1",
+                title: "Avatar: Aang afsonasi",
+                type: "Serial",
+                genre: "Fantastika",
+                year: "2024",
+                poster: "https://m.media-amazon.com/images/M/MV5BZWMyYzFjYTYtNTRjYi00OGExLWE2YzgtOGRmYjAxZTU3NzBiXkEyXkFqcGdeQXVyMzQ2MDI5NjU@._V1_.jpg",
+                bio: "To'rt unsur dunyosini saqlab qolish uchun yosh Aang o'z burchini bajarishi kerak.",
+                episodes: [
+                    { title: "1-qism: Muzlikdagi bolakay", video_url: "https://www.w3schools.com/html/mov_bbb.mp4" },
+                    { title: "2-qism: Qaytish", video_url: "https://www.w3schools.com/html/mov_bbb.mp4" }
+                ]
+            },
+            {
+                id: "kino_2",
+                title: "O'rgimchak-Odam",
+                type: "Kino",
+                genre: "Jangovar",
+                year: "2021",
+                poster: "https://m.media-amazon.com/images/M/MV5BNzlkNzVjMDMtOTdhZC00MGE1LTkxODctMzFmMjAzMGFlMzA5XkEyXkFqcGdeQXVyMTkxNjUyNQ@@._V1_.jpg",
+                bio: "Piter Parker va uning do'stlarining yangi xavfli sarguzashtlari haqida film.",
+                video_url: "https://www.w3schools.com/html/mov_bbb.mp4"
+            }
+        ];
+
+        let selectedCategory = 'all';
+        let currentMovie = null;
+
+        function renderMovies(data) {
+            const container = document.getElementById('movieContainer');
+            container.innerHTML = '';
+            
+            if(data.length === 0) {
+                container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; color:#888; padding:20px;">Hech narsa topilmadi</div>';
+                return;
+            }
+
+            data.forEach(m => {
+                const card = document.createElement('div');
+                card.className = 'movie-card';
+                card.onclick = () => openPlayer(m);
+                card.innerHTML = `
+                    <img src="${m.poster}" class="poster">
+                    <div class="info">
+                        <div class="title">${m.title}</div>
+                        <div class="meta"><span>${m.year}</span><span>${m.genre}</span></div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function filterMovies() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            const filtered = movies.filter(m => {
+                const matchCat = selectedCategory === 'all' || m.genre === selectedCategory || m.type === selectedCategory;
+                // Bitta harf kiritilganda ham mos kinolarni chiqarish
+                const matchSearch = query === '' || m.title.toLowerCase().includes(query);
+                return matchCat && matchSearch;
+            });
+            renderMovies(filtered);
+        }
+
+        function selectCategory(cat, el) {
+            selectedCategory = cat;
+            document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            filterMovies();
+        }
+
+        function openPlayer(m) {
+            currentMovie = m;
+            document.getElementById('mTitle').innerText = m.title;
+            document.getElementById('mTags').innerText = `${m.year} • ${m.genre} • ${m.type}`;
+            document.getElementById('mBio').innerText = m.bio;
+
+            const player = document.getElementById('videoPlayer');
+            const epContainer = document.getElementById('episodesContainer');
+            epContainer.innerHTML = '';
+
+            if(m.type === 'Serial') {
+                player.style.display = 'none';
+                epContainer.style.display = 'flex';
+                m.episodes.forEach(ep => {
+                    const item = document.createElement('div');
+                    item.className = 'episode-item';
+                    item.innerHTML = `<span>${ep.title}</span> <span>▶</span>`;
+                    item.onclick = () => playVideo(ep.video_url);
+                    epContainer.appendChild(item);
+                });
+            } else {
+                player.style.display = 'block';
+                epContainer.style.display = 'none';
+                playVideo(m.video_url);
+            }
+
+            document.getElementById('playerModal').style.display = 'block';
+        }
+
+        function playVideo(url) {
+            const player = document.getElementById('videoPlayer');
+            player.style.display = 'block';
+            player.src = url;
+            player.play();
+        }
+
+        function closePlayer() {
+            const player = document.getElementById('videoPlayer');
+            player.pause();
+            player.src = '';
+            document.getElementById('playerModal').style.display = 'none';
+        }
+
+        function shareBotLink() {
+            const link = `https://t.me/share/url?url=https://t.me/${BOT_USERNAME}?start=${currentMovie.id}&text=Ajoyib kino: "${currentMovie.title}"ni onlayn tomosha qiling!🍿`;
+            tg.openTelegramLink(link);
+        }
+
+        renderMovies(movies);
+    </script>
+</body>
+</html>
